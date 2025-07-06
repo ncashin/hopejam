@@ -1,0 +1,8 @@
+version: '3.8'
+
+services:
+  hopejam:
+    build: .
+    ports:
+      - "4321:80"
+    container_name: hopejam
