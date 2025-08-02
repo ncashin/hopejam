@@ -307,8 +307,9 @@ export const BOUNCY_RESOLVER: ResolverDefinition<CircleCollisionObject> = {
 
 // Register the colliders and resolvers
 registerCollider(RECTANGLE_COLLIDER);
-registerCollider(CIRCLE_COLLIDER);
 registerResolver(STATIC_RESOLVER);
+
+registerCollider(CIRCLE_COLLIDER);
 registerResolver(BOUNCY_RESOLVER);
 
 /* CollisionObject Examples */
