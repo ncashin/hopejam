@@ -3,7 +3,8 @@ import { Vector } from "./vector";
 export type CollisionObject = {
   colliderName: string;
   resolverName: string;
-};
+  collisionEnabled?: boolean;
+} ;
 
 export type ColliderDefinition<T extends CollisionObject = CollisionObject> = {
   name: string;
@@ -26,16 +27,16 @@ export type ResolverDefinition<T extends CollisionObject = CollisionObject> = {
   ) => void;
 };
 
-export const resolvers: { [name: string]: ResolverDefinition } = {};
-export const registerResolver = (resolver: ResolverDefinition) => {
+export const resolvers: { [name: string]: ResolverDefinition<any> } = {};
+export const registerResolver = (resolver: ResolverDefinition<any>) => {
   resolvers[resolver.name] = resolver;
 };
 export const unregisterResolver = (name: string) => {
   delete resolvers[name];
 };
 
-export const colliders: { [name: string]: ColliderDefinition } = {};
-export const registerCollider = (collider: ColliderDefinition) => {
+export const colliders: { [name: string]: ColliderDefinition<any> } = {};
+export const registerCollider = (collider: ColliderDefinition<any>) => {
   colliders[collider.name] = collider;
 };
 export const unregisterCollider = (name: string) => {
@@ -123,8 +124,28 @@ export const updateCollisionObjects = (collisionObjects: CollisionObject[]) => {
   }
 };
 
+/* Example Collision Object types */
+export type RectangleCollisionObject = CollisionObject & {
+  position: Vector;
+  width: number;
+  height: number;
+  color?: string;
+  isColliding?: boolean;
+  velocity?: Vector;
+  angle: number;
+  angularVelocity?: number;
+};
+
+export type CircleCollisionObject = CollisionObject & {
+  position: Vector;
+  velocity: Vector;
+  radius: number;
+  color?: string;
+  isColliding?: boolean;
+};
+
 /* Collider and Resolver Examples */
-export const RECTANGLE_COLLIDER: ColliderDefinition<typeof staticRectangleObject> = {
+export const RECTANGLE_COLLIDER: ColliderDefinition<RectangleCollisionObject> = {
   name: "rectangle",
   getNormals: (collisionObject, _other) => {
     const angle = ((collisionObject.angle || 0) * Math.PI) / 180;
@@ -143,23 +164,14 @@ export const RECTANGLE_COLLIDER: ColliderDefinition<typeof staticRectangleObject
   },
 
   getClosestPoint: (collisionObject, point) => {
-    const center = new Vector(
-      collisionObject.pos?.x !== undefined
-        ? collisionObject.pos.x
-        : collisionObject.position.x,
-      collisionObject.pos?.y !== undefined
-        ? collisionObject.pos.y
-        : collisionObject.position.y
-    );
+    const center = collisionObject.position;
     const width = collisionObject.width;
     const height = collisionObject.height;
     const angle = ((collisionObject.angle || 0) * Math.PI) / 180;
 
     const rectCenter = center.clone();
-    if (collisionObject.pos) {
-      rectCenter.x += width / 2;
-      rectCenter.y += height / 2;
-    }
+    rectCenter.x += width / 2;
+    rectCenter.y += height / 2;
 
     // Transform point to local coordinate system (accounting for rotation)
     const localPoint = point.sub(rectCenter);
@@ -194,19 +206,10 @@ export const RECTANGLE_COLLIDER: ColliderDefinition<typeof staticRectangleObject
     const width = collisionObject.width;
     const height = collisionObject.height;
     const angle = ((collisionObject.angle || 0) * Math.PI) / 180;
-    const center = new Vector(
-      collisionObject.pos?.x !== undefined
-        ? collisionObject.pos.x
-        : collisionObject.position.x,
-      collisionObject.pos?.y !== undefined
-        ? collisionObject.pos.y
-        : collisionObject.position.y
-    );
+    const center = collisionObject.position;
     const rectCenter = center.clone();
-    if (collisionObject.pos) {
-      rectCenter.x += width / 2;
-      rectCenter.y += height / 2;
-    }
+    rectCenter.x += width / 2;
+    rectCenter.y += height / 2;
 
     const hw = width / 2;
     const hh = height / 2;
@@ -238,12 +241,12 @@ export const RECTANGLE_COLLIDER: ColliderDefinition<typeof staticRectangleObject
     };
   },
 };
-export const STATIC_RESOLVER: ResolverDefinition<typeof staticRectangleObject> = {
+export const STATIC_RESOLVER: ResolverDefinition<RectangleCollisionObject> = {
   name: "static",
   resolveCollision: (_objA, _objB, _overlapAmount, _overlapNormal) => {},
 };
 
-export const CIRCLE_COLLIDER: ColliderDefinition<typeof bouncyCircleObject> = {
+export const CIRCLE_COLLIDER: ColliderDefinition<CircleCollisionObject> = {
   name: "circle",
   getNormals: (collisionObject, other) => {
     const otherCollider = colliders[other.colliderName];
@@ -274,7 +277,7 @@ export const CIRCLE_COLLIDER: ColliderDefinition<typeof bouncyCircleObject> = {
   },
 };
 
-export const BOUNCY_RESOLVER: ResolverDefinition<typeof bouncyCircleObject> = {
+export const BOUNCY_RESOLVER: ResolverDefinition<CircleCollisionObject> = {
   name: "bouncy",
   resolveCollision: (objA, _objB, overlapAmount, overlapNormal) => {
     objA.position = objA.position.add(
@@ -309,27 +312,6 @@ registerResolver(STATIC_RESOLVER);
 registerResolver(BOUNCY_RESOLVER);
 
 /* CollisionObject Examples */
-export type RectangleCollisionObject = CollisionObject & {
-  position: Vector;
-  width: number;
-  height: number;
-  color?: string;
-  isColliding?: boolean;
-  velocity?: Vector;
-  angle?: number;
-  angularVelocity?: number;
-  collisionEnabled?: boolean;
-};
-
-export type CircleCollisionObject = CollisionObject & {
-  position: Vector;
-  velocity: Vector;
-  radius: number;
-  color?: string;
-  isColliding?: boolean;
-  collisionEnabled?: boolean;
-};
-
 const staticRectangleObject: RectangleCollisionObject = {
   colliderName: "rectangle",
   resolverName: "static",

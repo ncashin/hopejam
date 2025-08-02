@@ -1,4 +1,4 @@
-import { updateCollisionObjects, type CollisionObject } from "./collisionObject";
+import { updateCollisionObjects, type CollisionObject, type CircleCollisionObject, type RectangleCollisionObject } from "./collisionObject";
 import "./style.css";
 import { Vector } from "./vector";
 
@@ -19,7 +19,7 @@ resizeCanvas();
 
 window.addEventListener("resize", resizeCanvas);
 
-const projectile: CollisionObject = {
+const projectile: CircleCollisionObject = {
   colliderName: "circle",
   resolverName: "bouncy",
   collisionEnabled: true,
@@ -28,7 +28,7 @@ const projectile: CollisionObject = {
   radius: 10,
 };
 
-const staticProjectile: CollisionObject = {
+const staticProjectile: CircleCollisionObject = {
   colliderName: "circle",
   resolverName: "static",
   collisionEnabled: true,
@@ -96,63 +96,63 @@ document.addEventListener("keydown", (e) => {
   }
 });
 
-const rectangleObject: CollisionObject = {
+const rectangleObject: RectangleCollisionObject = {
   colliderName: "rectangle",
   resolverName: "static",
   collisionEnabled: true,
-  pos: new Vector(600, 300),
+  position: new Vector(600, 300),
   width: 300,
   height: 100,
   color: "#ffaa00",
   isColliding: false,
-  vel: new Vector(0, 0),
+  velocity: new Vector(0, 0),
   angle: 0,
   angularVelocity: 0,
 };
 
-const groundCollisionRectangle: CollisionObject = {
+const groundCollisionRectangle: RectangleCollisionObject = {
   colliderName: "rectangle",
   resolverName: "static",
   collisionEnabled: true,
-  pos: new Vector(0, 0),
+  position: new Vector(0, 0),
   width: 2000,
   height: 50,
   color: "#666666",
   isColliding: false,
-  vel: new Vector(0, 0),
+  velocity: new Vector(0, 0),
   angle: 0,
   angularVelocity: 0,
 };
 
-const leftWallCollisionRectangle: CollisionObject = {
+const leftWallCollisionRectangle: RectangleCollisionObject = {
   colliderName: "rectangle",
   resolverName: "static",
   collisionEnabled: true,
-  pos: new Vector(0, 0),
+  position: new Vector(0, 0),
   width: 50,
   height: 2000,
   color: "#666666",
   isColliding: false,
-  vel: new Vector(0, 0),
+  velocity: new Vector(0, 0),
   angle: 0,
   angularVelocity: 0,
 };
 
-const rightWallCollisionRectangle: CollisionObject = {
+const rightWallCollisionRectangle: RectangleCollisionObject = {
   colliderName: "rectangle",
   resolverName: "static",
   collisionEnabled: true,
-  pos: new Vector(canvas.width - 50, 0),
+  position: new Vector(canvas.width - 50, 0),
   width: 50,
   height: 2000,
   color: "#666666",
   isColliding: false,
-  vel: new Vector(0, 0),
+  velocity: new Vector(0, 0),
   angle: 0,
   angularVelocity: 0,
 };
 
-const collisionObjects = [projectile, staticProjectile, rectangleObject, groundCollisionRectangle, leftWallCollisionRectangle, rightWallCollisionRectangle];
+const collisionObjects: CollisionObject[] = [projectile, staticProjectile, rectangleObject, groundCollisionRectangle, leftWallCollisionRectangle, rightWallCollisionRectangle];
 
 
 function draw() {
@@ -210,8 +210,8 @@ function draw() {
   context.fillStyle = rectangleObject.color || "#4287f5";
 
   context.translate(
-    rectangleObject.pos.x + rectangleObject.width / 2,
-    rectangleObject.pos.y + rectangleObject.height / 2
+    rectangleObject.position.x + rectangleObject.width / 2,
+    rectangleObject.position.y + rectangleObject.height / 2
   );
   context.rotate((rectangleObject.angle * Math.PI) / 180);
 
@@ -231,8 +231,8 @@ function draw() {
   
   context.fillStyle = groundCollisionRectangle.color || "#666666";
   context.fillRect(
-    groundCollisionRectangle.pos.x,
-    groundCollisionRectangle.pos.y,
+    groundCollisionRectangle.position.x,
+    groundCollisionRectangle.position.y,
     groundCollisionRectangle.width,
     groundCollisionRectangle.height
   );
@@ -246,8 +246,8 @@ function draw() {
   
   context.fillStyle = leftWallCollisionRectangle.color || "#666666";
   context.fillRect(
-    leftWallCollisionRectangle.pos.x,
-    leftWallCollisionRectangle.pos.y,
+    leftWallCollisionRectangle.position.x,
+    leftWallCollisionRectangle.position.y,
     leftWallCollisionRectangle.width,
     leftWallCollisionRectangle.height
   );
@@ -261,8 +261,8 @@ function draw() {
   
   context.fillStyle = rightWallCollisionRectangle.color || "#666666";
   context.fillRect(
-    rightWallCollisionRectangle.pos.x,
-    rightWallCollisionRectangle.pos.y,
+    rightWallCollisionRectangle.position.x,
+    rightWallCollisionRectangle.position.y,
     rightWallCollisionRectangle.width,
     rightWallCollisionRectangle.height
   );
