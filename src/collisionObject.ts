@@ -1,48 +1,81 @@
 import { Vector } from "./vector";
 
 export type CollisionObject = {
-  collisionEnabled?: boolean;
-  getNormals: (other: CollisionObject) => Vector[];
-  getClosestPoint: (point: Vector) => Vector;
-  calculateProjection: (normal: Vector) => { min: number; max: number };
-  handleCollision: (overlapAmount: number, overlapNormal: Vector) => void;
+  colliderName: string;
+  resolverName: string;
   [key: string]: any;
 };
 
-export type ColliderDefinition = {
-  getNormals: (other: CollisionObject) => Vector[];
-  getClosestPoint: (point: Vector) => Vector;
-  calculateProjection: (normal: Vector) => { min: number; max: number };
+export type ColliderDefinition<T extends CollisionObject = CollisionObject> = {
+  name: string;
+  getNormals: (collisionObject: T, other: CollisionObject) => Vector[];
+  getClosestPoint: (collisionObject: T, point: Vector) => Vector;
+  calculateProjection: (
+    collisionObject: T,
+    normal: Vector
+  ) => { min: number; max: number };
 };
-export type ResolverDefinition = {};
 
-export const collisionObjects: CollisionObject[] = [];
-export const registerCollisionObject = (obj: CollisionObject) => {
-  collisionObjects.push(obj);
+// objA = object associated with resolver, objB = other object involved in the collision
+export type ResolverDefinition<T extends CollisionObject = CollisionObject> = {
+  name: string;
+  resolveCollision: (
+    objA: T,
+    objB: CollisionObject,
+    overlapAmount: number,
+    overlapNormal: Vector
+  ) => void;
 };
-export const unregisterCollisionObject = (obj: CollisionObject) => {
-  const index = collisionObjects.indexOf(obj);
-  if (index !== -1) {
-    collisionObjects.splice(index, 1);
-  }
+
+export const resolvers: { [name: string]: ResolverDefinition } = {};
+export const registerResolver = (resolver: ResolverDefinition) => {
+  resolvers[resolver.name] = resolver;
+};
+export const unregisterResolver = (name: string) => {
+  delete resolvers[name];
+};
+
+export const colliders: { [name: string]: ColliderDefinition } = {};
+export const registerCollider = (collider: ColliderDefinition) => {
+  colliders[collider.name] = collider;
+};
+export const unregisterCollider = (name: string) => {
+  delete colliders[name];
 };
 
 // object needs
 // - collider - normals, closestPoint for circles, calculateProjection
 // - resolver - handleCollision given overlap, normal and other object
 
-// Why is this hard just make an object - I want this to be json serializable which means functions make me sad and can't coexist with data
+// Why is this hard just make it a big object - I want this to be json serializable which means functions make me sad and can't coexist with data
 
 // don't worry I am aware how horrifically unoptimized this is currently only for a small example
-export const updateCollisionObjects = () => {
+export const updateCollisionObjects = (collisionObjects: CollisionObject[]) => {
   for (let i = 0; i < collisionObjects.length; i++) {
     const objA = collisionObjects[i];
     if (!objA.collisionEnabled) continue;
+    
+    const colliderA = colliders[objA.colliderName];
+    const resolverA = resolvers[objA.resolverName];
+    
+    if (!colliderA || !resolverA) {
+      console.warn(`Missing collider or resolver for object A: ${objA.colliderName}, ${objA.resolverName}`);
+      continue;
+    }
+    
     for (let j = i + 1; j < collisionObjects.length; j++) {
       const objB = collisionObjects[j];
       if (!objB.collisionEnabled) continue;
 
-      const normals = [...objA.getNormals(objB), ...objB.getNormals(objA)];
+      const colliderB = colliders[objB.colliderName];
+      const resolverB = resolvers[objB.resolverName];
+      
+      if (!colliderB || !resolverB) {
+        console.warn(`Missing collider or resolver for object B: ${objB.colliderName}, ${objB.resolverName}`);
+        continue;
+      }
+
+      const normals = [...colliderA.getNormals(objA, objB), ...colliderB.getNormals(objB, objA)];
 
       let minOverlap = Infinity;
       let smallestNormal: Vector | null = null;
@@ -50,8 +83,8 @@ export const updateCollisionObjects = () => {
 
       for (const normal of normals) {
         const n = normal.normalize();
-        const projA = objA.calculateProjection(n);
-        const projB = objB.calculateProjection(n);
+        const projA = colliderA.calculateProjection(objA, n);
+        const projB = colliderB.calculateProjection(objB, n);
 
         const overlapA = projB.max - projA.min;
         const overlapB = projA.max - projB.min;
@@ -81,79 +114,118 @@ export const updateCollisionObjects = () => {
       }
 
       if (smallestNormal && minOverlap > 0 && minOverlap < Infinity) {
-        objA.handleCollision(minOverlap * direction, smallestNormal);
-
-        objB.handleCollision(minOverlap * -direction, smallestNormal);
+        resolverA.resolveCollision(objA, objB, minOverlap * direction, smallestNormal);
+        resolverB.resolveCollision(objB, objA, minOverlap * -direction, smallestNormal);
       }
     }
   }
 };
 
-/* CollisionObject Examples */
-const staticRectangleObject: CollisionObject = {
-  collisionEnabled: true,
-  position: new Vector(600, 300),
-  width: 300,
-  height: 100,
-  color: "#ffaa00",
-  isColliding: false,
-  velocity: new Vector(0, 0),
-  angle: 0,
-  angularVelocity: 0,
+export const RECTANGLE_COLLIDER: ColliderDefinition<typeof staticRectangleObject> = {
+  name: "rectangle",
+  getNormals: (collisionObject, _other) => {
+    const angle = ((collisionObject.angle || 0) * Math.PI) / 180;
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
 
-  getNormals: function (_other: CollisionObject) {
-    const angleRad = (this.angle * Math.PI) / 180;
-    const cos = Math.cos(angleRad);
-    const sin = Math.sin(angleRad);
+    const rotate = (v: Vector) =>
+      new Vector(v.x * cos - v.y * sin, v.x * sin + v.y * cos);
 
-    return [new Vector(cos, sin), new Vector(-sin, cos)];
+    return [
+      rotate(new Vector(0, 1)),
+      rotate(new Vector(1, 0)),
+      rotate(new Vector(0, -1)),
+      rotate(new Vector(-1, 0)),
+    ];
   },
 
-  getClosestPoint: function (point: Vector) {
-    const angleRad = (this.angle * Math.PI) / 180;
-    const cos = Math.cos(angleRad);
-    const sin = Math.sin(angleRad);
-
+  getClosestPoint: (collisionObject, point) => {
     const center = new Vector(
-      this.pos.x + this.width / 2,
-      this.pos.y + this.height / 2
+      collisionObject.pos?.x !== undefined
+        ? collisionObject.pos.x
+        : collisionObject.position.x,
+      collisionObject.pos?.y !== undefined
+        ? collisionObject.pos.y
+        : collisionObject.position.y
     );
-    const localPoint = point.sub(center);
+    const width = collisionObject.width;
+    const height = collisionObject.height;
+    const angle = ((collisionObject.angle || 0) * Math.PI) / 180;
 
-    const rotatedX = localPoint.x * cos + localPoint.y * sin;
-    const rotatedY = -localPoint.x * sin + localPoint.y * cos;
+    const rectCenter = center.clone();
+    if (collisionObject.pos) {
+      rectCenter.x += width / 2;
+      rectCenter.y += height / 2;
+    }
 
-    const hw = this.width / 2;
-    const hh = this.height / 2;
-    const clampedX = Math.max(-hw, Math.min(hw, rotatedX));
-    const clampedY = Math.max(-hh, Math.min(hh, rotatedY));
+    // Transform point to local coordinate system (accounting for rotation)
+    const localPoint = point.sub(rectCenter);
+    const cos = Math.cos(-angle); // Negative angle to rotate back
+    const sin = Math.sin(-angle);
+    
+    const rotatedPoint = new Vector(
+      localPoint.x * cos - localPoint.y * sin,
+      localPoint.x * sin + localPoint.y * cos
+    );
 
-    const localClosest = new Vector(clampedX, clampedY);
-    const unrotatedX = localClosest.x * cos - localClosest.y * sin;
-    const unrotatedY = localClosest.x * sin + localClosest.y * cos;
+    // Clamp to rectangle bounds in local space
+    const hw = width / 2;
+    const hh = height / 2;
+    const clampedX = Math.max(-hw, Math.min(hw, rotatedPoint.x));
+    const clampedY = Math.max(-hh, Math.min(hh, rotatedPoint.y));
 
-    return center.add(new Vector(unrotatedX, unrotatedY));
+    // Transform back to world space
+    const localClamped = new Vector(clampedX, clampedY);
+    const cos2 = Math.cos(angle);
+    const sin2 = Math.sin(angle);
+    
+    const worldClamped = new Vector(
+      localClamped.x * cos2 - localClamped.y * sin2,
+      localClamped.x * sin2 + localClamped.y * cos2
+    );
+
+    return rectCenter.add(worldClamped);
   },
 
-  calculateProjection: function (normal: Vector) {
-    const hw = this.width / 2;
-    const hh = this.height / 2;
-    const angleRad = (this.angle * Math.PI) / 180;
-    const cos = Math.cos(angleRad);
-    const sin = Math.sin(angleRad);
+  calculateProjection: (collisionObject, normal) => {
+    const width = collisionObject.width;
+    const height = collisionObject.height;
+    const angle = ((collisionObject.angle || 0) * Math.PI) / 180;
+    const center = new Vector(
+      collisionObject.pos?.x !== undefined
+        ? collisionObject.pos.x
+        : collisionObject.position.x,
+      collisionObject.pos?.y !== undefined
+        ? collisionObject.pos.y
+        : collisionObject.position.y
+    );
+    const rectCenter = center.clone();
+    if (collisionObject.pos) {
+      rectCenter.x += width / 2;
+      rectCenter.y += height / 2;
+    }
 
-    const cx = this.pos.x + hw;
-    const cy = this.pos.y + hh;
+    const hw = width / 2;
+    const hh = height / 2;
 
-    const corners = [
+    // Create corners in local space
+    const localCorners = [
       new Vector(-hw, -hh),
       new Vector(hw, -hh),
       new Vector(hw, hh),
       new Vector(-hw, hh),
-    ].map((corner) => {
-      const x = corner.x * cos - corner.y * sin;
-      const y = corner.x * sin + corner.y * cos;
-      return new Vector(cx + x, cy + y);
+    ];
+
+    // Transform corners to world space
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    
+    const corners = localCorners.map(localCorner => {
+      const worldCorner = new Vector(
+        localCorner.x * cos - localCorner.y * sin,
+        localCorner.x * sin + localCorner.y * cos
+      );
+      return rectCenter.add(worldCorner);
     });
 
     const projections = corners.map((corner) => corner.dot(normal));
@@ -162,56 +234,98 @@ const staticRectangleObject: CollisionObject = {
       max: Math.max(...projections),
     };
   },
-
-  handleCollision: function (_overlapAmount: number, _overlapNormal: Vector) {},
+};
+export const STATIC_RESOLVER: ResolverDefinition<typeof staticRectangleObject> = {
+  name: "static",
+  resolveCollision: (_objA, _objB, _overlapAmount, _overlapNormal) => {},
 };
 
-const bouncyCircleObject: CollisionObject = {
-  collisionEnabled: true,
-  position: new Vector(700, 500),
-  velocity: new Vector(0, 0),
-  radius: 10,
-  getNormals(other: CollisionObject) {
-    const closestPoint = other.getClosestPoint(this.position);
-    const direction = closestPoint.sub(this.position);
+export const CIRCLE_COLLIDER: ColliderDefinition<typeof bouncyCircleObject> = {
+  name: "circle",
+  getNormals: (collisionObject, other) => {
+    const otherCollider = colliders[other.colliderName];
+    const closestPoint = otherCollider.getClosestPoint(other, collisionObject.position);
+    const direction = closestPoint.sub(collisionObject.position);
     if (direction.length() > 0) {
       return [direction.normalize()];
     }
     return [];
   },
-  getClosestPoint: function (point: Vector) {
-    const direction = point.sub(this.position);
-    if (direction.length() <= this.radius) {
+
+  getClosestPoint: (collisionObject, point) => {
+    const direction = point.sub(collisionObject.position);
+    if (direction.length() <= collisionObject.radius) {
       return point;
     }
-    return this.position.add(direction.normalize().scale(this.radius));
+    return collisionObject.position.add(
+      direction.normalize().scale(collisionObject.radius)
+    );
   },
-  calculateProjection(normal: Vector) {
-    const projection = this.position.dot(normal);
-    return { min: projection - this.radius, max: projection + this.radius };
+
+  calculateProjection: (collisionObject, normal) => {
+    const projection = collisionObject.position.dot(normal);
+    return {
+      min: projection - collisionObject.radius,
+      max: projection + collisionObject.radius,
+    };
   },
-  handleCollision(overlapAmount: number, overlapNormal: Vector) {
-    this.position = this.position.add(
+};
+
+export const BOUNCY_RESOLVER: ResolverDefinition<typeof bouncyCircleObject> = {
+  name: "bouncy",
+  resolveCollision: (objA, _objB, overlapAmount, overlapNormal) => {
+    objA.position = objA.position.add(
       overlapNormal.normalize().scale(overlapAmount)
     );
 
     const n = overlapNormal.normalize();
-    const vDotN = this.velocity.dot(n);
+    const vDotN = objA.velocity.dot(n);
     const COLLISION_DAMPING = 0.7;
 
-    this.velocity = this.velocity.sub(n.scale((1 + COLLISION_DAMPING) * vDotN));
+    objA.velocity = objA.velocity.sub(n.scale((1 + COLLISION_DAMPING) * vDotN));
 
     const tangent = new Vector(-n.y, n.x);
-    const vDotT = this.velocity.dot(tangent);
+    const vDotT = objA.velocity.dot(tangent);
     const FRICTION = 0.2;
-    this.velocity = this.velocity.sub(tangent.scale(vDotT * FRICTION));
+    objA.velocity = objA.velocity.sub(tangent.scale(vDotT * FRICTION));
 
     const VELOCITY_EPSILON_X = 10;
     const VELOCITY_EPSILON_Y = 40;
-    let vx = this.velocity.x;
-    let vy = this.velocity.y;
+    let vx = objA.velocity.x;
+    let vy = objA.velocity.y;
     if (Math.abs(vx) < VELOCITY_EPSILON_X) vx = 0;
     if (Math.abs(vy) < VELOCITY_EPSILON_Y) vy = 0;
-    this.velocity = new Vector(vx, vy);
+    objA.velocity = new Vector(vx, vy);
   },
+};
+
+// Register the colliders and resolvers
+registerCollider(RECTANGLE_COLLIDER);
+registerCollider(CIRCLE_COLLIDER);
+registerResolver(STATIC_RESOLVER);
+registerResolver(BOUNCY_RESOLVER);
+
+/* CollisionObject Examples */
+const staticRectangleObject: CollisionObject = {
+  colliderName: "rectangle",
+  resolverName: "static",
+
+  position: new Vector(600, 300),
+  width: 300,
+  height: 100,
+  color: "#ffaa00",
+  isColliding: false,
+  velocity: new Vector(0, 0),
+  angle: 0,
+  angularVelocity: 0,
+};
+
+const bouncyCircleObject: CollisionObject = {
+  colliderName: "circle",
+  resolverName: "bouncy",
+
+  position: new Vector(700, 500),
+  velocity: new Vector(0, 0),
+  radius: 10,
+  collisionEnabled: true,
 };
