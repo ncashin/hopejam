@@ -164,15 +164,14 @@ function draw() {
   context.fillStyle = "#242424";
   context.fillRect(0, 0, canvas.width, canvas.height);
 
-  // Draw green dotted line at y=800
   context.strokeStyle = "#00ff00";
   context.lineWidth = 2;
-  context.setLineDash([10, 5]); // 10px dash, 5px gap
+  context.setLineDash([10, 5]);
   context.beginPath();
   context.moveTo(0, 800);
   context.lineTo(canvas.width, 800);
   context.stroke();
-  context.setLineDash([]); // Reset line dash
+  context.setLineDash([]);
 
   context.fillStyle = "#ff6464";
   context.beginPath();
@@ -224,7 +223,6 @@ function draw() {
 
   context.restore();
 
-  // Draw ground collision rectangle
   context.save();
   context.translate(0, canvas.height);
   context.scale(1, -1);
@@ -239,7 +237,6 @@ function draw() {
   
   context.restore();
 
-  // Draw left wall collision rectangle
   context.save();
   context.translate(0, canvas.height);
   context.scale(1, -1);
@@ -254,7 +251,6 @@ function draw() {
   
   context.restore();
 
-  // Draw right wall collision rectangle
   context.save();
   context.translate(0, canvas.height);
   context.scale(1, -1);
@@ -274,9 +270,8 @@ function draw() {
 
     const GRAVITY = -500;
     projectile.velocity = projectile.velocity.add(new Vector(0, GRAVITY / 60));
-
-    // Ground collision is now handled by the collision system
   }
+  
   updateCollisionObjects(collisionObjects);
 
   requestAnimationFrame(draw);
