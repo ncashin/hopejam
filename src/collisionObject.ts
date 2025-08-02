@@ -3,7 +3,6 @@ import { Vector } from "./vector";
 export type CollisionObject = {
   colliderName: string;
   resolverName: string;
-  [key: string]: any;
 };
 
 export type ColliderDefinition<T extends CollisionObject = CollisionObject> = {
@@ -124,6 +123,7 @@ export const updateCollisionObjects = (collisionObjects: CollisionObject[]) => {
   }
 };
 
+/* Collider and Resolver Examples */
 export const RECTANGLE_COLLIDER: ColliderDefinition<typeof staticRectangleObject> = {
   name: "rectangle",
   getNormals: (collisionObject, _other) => {
@@ -309,7 +309,28 @@ registerResolver(STATIC_RESOLVER);
 registerResolver(BOUNCY_RESOLVER);
 
 /* CollisionObject Examples */
-const staticRectangleObject: CollisionObject = {
+export type RectangleCollisionObject = CollisionObject & {
+  position: Vector;
+  width: number;
+  height: number;
+  color?: string;
+  isColliding?: boolean;
+  velocity?: Vector;
+  angle?: number;
+  angularVelocity?: number;
+  collisionEnabled?: boolean;
+};
+
+export type CircleCollisionObject = CollisionObject & {
+  position: Vector;
+  velocity: Vector;
+  radius: number;
+  color?: string;
+  isColliding?: boolean;
+  collisionEnabled?: boolean;
+};
+
+const staticRectangleObject: RectangleCollisionObject = {
   colliderName: "rectangle",
   resolverName: "static",
 
@@ -321,9 +342,10 @@ const staticRectangleObject: CollisionObject = {
   velocity: new Vector(0, 0),
   angle: 0,
   angularVelocity: 0,
+  collisionEnabled: true,
 };
 
-const bouncyCircleObject: CollisionObject = {
+const bouncyCircleObject: CircleCollisionObject = {
   colliderName: "circle",
   resolverName: "bouncy",
 
