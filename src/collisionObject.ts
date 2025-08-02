@@ -50,73 +50,76 @@ export const unregisterCollider = (name: string) => {
 // Why is this hard just make it a big object - I want this to be json serializable which means functions make me sad and can't coexist with data
 
 // don't worry I am aware how horrifically unoptimized this is currently only for a small example
+export const handleCollisionPair = (objA: CollisionObject, objB: CollisionObject) => {
+  if (!objA.collisionEnabled || !objB.collisionEnabled) return;
+  
+  const colliderA = colliders[objA.colliderName];
+  const resolverA = resolvers[objA.resolverName];
+  
+  if (!colliderA || !resolverA) {
+    console.warn(`Missing collider or resolver for object A: ${objA.colliderName}, ${objA.resolverName}`);
+    return;
+  }
+  
+  const colliderB = colliders[objB.colliderName];
+  const resolverB = resolvers[objB.resolverName];
+  
+  if (!colliderB || !resolverB) {
+    console.warn(`Missing collider or resolver for object B: ${objB.colliderName}, ${objB.resolverName}`);
+    return;
+  }
+
+  const normals = [...colliderA.getNormals(objA, objB), ...colliderB.getNormals(objB, objA)];
+
+  let minOverlap = Infinity;
+  let smallestNormal: Vector | null = null;
+  let direction: number = 1;
+
+  for (const normal of normals) {
+    const n = normal.normalize();
+    const projA = colliderA.calculateProjection(objA, n);
+    const projB = colliderB.calculateProjection(objB, n);
+
+    const overlapA = projB.max - projA.min;
+    const overlapB = projA.max - projB.min;
+
+    if (overlapA <= 0 || overlapB <= 0) {
+      minOverlap = 0;
+      smallestNormal = null;
+      break;
+    }
+
+    let currentOverlap: number;
+    let currentDirection: number;
+
+    if (overlapA < overlapB) {
+      currentOverlap = overlapA;
+      currentDirection = 1;
+    } else {
+      currentOverlap = overlapB;
+      currentDirection = -1;
+    }
+
+    if (currentOverlap < minOverlap) {
+      minOverlap = currentOverlap;
+      smallestNormal = n;
+      direction = currentDirection;
+    }
+  }
+
+  if (smallestNormal && minOverlap > 0 && minOverlap < Infinity) {
+    resolverA.resolveCollision(objA, objB, minOverlap * direction, smallestNormal);
+    resolverB.resolveCollision(objB, objA, minOverlap * -direction, smallestNormal);
+  }
+};
+
 export const updateCollisionObjects = (collisionObjects: CollisionObject[]) => {
   for (let i = 0; i < collisionObjects.length; i++) {
     const objA = collisionObjects[i];
-    if (!objA.collisionEnabled) continue;
-    
-    const colliderA = colliders[objA.colliderName];
-    const resolverA = resolvers[objA.resolverName];
-    
-    if (!colliderA || !resolverA) {
-      console.warn(`Missing collider or resolver for object A: ${objA.colliderName}, ${objA.resolverName}`);
-      continue;
-    }
     
     for (let j = i + 1; j < collisionObjects.length; j++) {
       const objB = collisionObjects[j];
-      if (!objB.collisionEnabled) continue;
-
-      const colliderB = colliders[objB.colliderName];
-      const resolverB = resolvers[objB.resolverName];
-      
-      if (!colliderB || !resolverB) {
-        console.warn(`Missing collider or resolver for object B: ${objB.colliderName}, ${objB.resolverName}`);
-        continue;
-      }
-
-      const normals = [...colliderA.getNormals(objA, objB), ...colliderB.getNormals(objB, objA)];
-
-      let minOverlap = Infinity;
-      let smallestNormal: Vector | null = null;
-      let direction: number = 1;
-
-      for (const normal of normals) {
-        const n = normal.normalize();
-        const projA = colliderA.calculateProjection(objA, n);
-        const projB = colliderB.calculateProjection(objB, n);
-
-        const overlapA = projB.max - projA.min;
-        const overlapB = projA.max - projB.min;
-
-        if (overlapA <= 0 || overlapB <= 0) {
-          minOverlap = 0;
-          smallestNormal = null;
-          break;
-        }
-
-        let currentOverlap: number;
-        let currentDirection: number;
-
-        if (overlapA < overlapB) {
-          currentOverlap = overlapA;
-          currentDirection = 1;
-        } else {
-          currentOverlap = overlapB;
-          currentDirection = -1;
-        }
-
-        if (currentOverlap < minOverlap) {
-          minOverlap = currentOverlap;
-          smallestNormal = n;
-          direction = currentDirection;
-        }
-      }
-
-      if (smallestNormal && minOverlap > 0 && minOverlap < Infinity) {
-        resolverA.resolveCollision(objA, objB, minOverlap * direction, smallestNormal);
-        resolverB.resolveCollision(objB, objA, minOverlap * -direction, smallestNormal);
-      }
+      handleCollisionPair(objA, objB);
     }
   }
 };
