@@ -1,6 +1,5 @@
 import { Vector } from "./vector";
 
-
 export type CollisionObject = {
   collisionEnabled?: boolean;
   getNormals: (other: CollisionObject) => Vector[];
@@ -8,12 +7,19 @@ export type CollisionObject = {
   calculateProjection: (normal: Vector) => { min: number; max: number };
   handleCollision: (overlapAmount: number, overlapNormal: Vector) => void;
   [key: string]: any;
-}
+};
+
+export type ColliderDefinition = {
+  getNormals: (other: CollisionObject) => Vector[];
+  getClosestPoint: (point: Vector) => Vector;
+  calculateProjection: (normal: Vector) => { min: number; max: number };
+};
+export type ResolverDefinition = {};
 
 export const collisionObjects: CollisionObject[] = [];
 export const registerCollisionObject = (obj: CollisionObject) => {
   collisionObjects.push(obj);
-}
+};
 export const unregisterCollisionObject = (obj: CollisionObject) => {
   const index = collisionObjects.indexOf(obj);
   if (index !== -1) {
@@ -21,14 +27,20 @@ export const unregisterCollisionObject = (obj: CollisionObject) => {
   }
 };
 
+// object needs
+// - collider - normals, closestPoint for circles, calculateProjection
+// - resolver - handleCollision given overlap, normal and other object
+
+// Why is this hard just make an object - I want this to be json serializable which means functions make me sad and can't coexist with data
+
 // don't worry I am aware how horrifically unoptimized this is currently only for a small example
 export const updateCollisionObjects = () => {
   for (let i = 0; i < collisionObjects.length; i++) {
     const objA = collisionObjects[i];
-    if(!objA.collisionEnabled) continue
+    if (!objA.collisionEnabled) continue;
     for (let j = i + 1; j < collisionObjects.length; j++) {
       const objB = collisionObjects[j];
-      if(!objB.collisionEnabled) continue
+      if (!objB.collisionEnabled) continue;
 
       const normals = [...objA.getNormals(objB), ...objB.getNormals(objA)];
 
@@ -69,20 +81,13 @@ export const updateCollisionObjects = () => {
       }
 
       if (smallestNormal && minOverlap > 0 && minOverlap < Infinity) {
-        objA.handleCollision(
-          minOverlap * direction,
-          smallestNormal
-        );
+        objA.handleCollision(minOverlap * direction, smallestNormal);
 
-        objB.handleCollision(
-          minOverlap * -direction,
-          smallestNormal
-        );
+        objB.handleCollision(minOverlap * -direction, smallestNormal);
       }
     }
   }
-}
-
+};
 
 /* CollisionObject Examples */
 const staticRectangleObject: CollisionObject = {
@@ -100,12 +105,8 @@ const staticRectangleObject: CollisionObject = {
     const angleRad = (this.angle * Math.PI) / 180;
     const cos = Math.cos(angleRad);
     const sin = Math.sin(angleRad);
-    
-    return [
-      new Vector(cos, sin),
-      new Vector(-sin, cos),
-    
-    ];
+
+    return [new Vector(cos, sin), new Vector(-sin, cos)];
   },
 
   getClosestPoint: function (point: Vector) {
@@ -198,16 +199,12 @@ const bouncyCircleObject: CollisionObject = {
     const vDotN = this.velocity.dot(n);
     const COLLISION_DAMPING = 0.7;
 
-    this.velocity = this.velocity.sub(
-      n.scale((1 + COLLISION_DAMPING) * vDotN)
-    );
+    this.velocity = this.velocity.sub(n.scale((1 + COLLISION_DAMPING) * vDotN));
 
     const tangent = new Vector(-n.y, n.x);
     const vDotT = this.velocity.dot(tangent);
     const FRICTION = 0.2;
-    this.velocity = this.velocity.sub(
-      tangent.scale(vDotT * FRICTION)
-    );
+    this.velocity = this.velocity.sub(tangent.scale(vDotT * FRICTION));
 
     const VELOCITY_EPSILON_X = 10;
     const VELOCITY_EPSILON_Y = 40;
