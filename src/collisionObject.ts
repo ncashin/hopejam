@@ -14,6 +14,7 @@ export type ColliderDefinition<T extends CollisionObject = CollisionObject> = {
     collisionObject: T,
     normal: Vector
   ) => { min: number; max: number };
+  debugDraw?: (collisionObject: T, context: CanvasRenderingContext2D) => void;
 };
 
 // objA = object associated with resolver, objB = other object involved in the collision
@@ -124,6 +125,14 @@ export const updateCollisionObjects = (collisionObjects: CollisionObject[]) => {
   }
 };
 
+export const debugDrawColliders = (collisionObjects: CollisionObject[], context: CanvasRenderingContext2D) => {
+  collisionObjects.forEach(obj => {
+    const collider = colliders[obj.colliderName];
+    if (!collider || !collider.debugDraw) return;
+    collider.debugDraw(obj, context);
+  });
+};
+
 /* Example Collision Object types */
 export type RectangleCollisionObject = CollisionObject & {
   position: Vector;
@@ -158,8 +167,6 @@ export const RECTANGLE_COLLIDER: ColliderDefinition<RectangleCollisionObject> = 
     return [
       rotate(new Vector(0, 1)),
       rotate(new Vector(1, 0)),
-      rotate(new Vector(0, -1)),
-      rotate(new Vector(-1, 0)),
     ];
   },
 
@@ -173,9 +180,8 @@ export const RECTANGLE_COLLIDER: ColliderDefinition<RectangleCollisionObject> = 
     rectCenter.x += width / 2;
     rectCenter.y += height / 2;
 
-    // Transform point to local coordinate system (accounting for rotation)
     const localPoint = point.sub(rectCenter);
-    const cos = Math.cos(-angle); // Negative angle to rotate back
+    const cos = Math.cos(-angle);
     const sin = Math.sin(-angle);
     
     const rotatedPoint = new Vector(
@@ -183,13 +189,11 @@ export const RECTANGLE_COLLIDER: ColliderDefinition<RectangleCollisionObject> = 
       localPoint.x * sin + localPoint.y * cos
     );
 
-    // Clamp to rectangle bounds in local space
     const hw = width / 2;
     const hh = height / 2;
     const clampedX = Math.max(-hw, Math.min(hw, rotatedPoint.x));
     const clampedY = Math.max(-hh, Math.min(hh, rotatedPoint.y));
 
-    // Transform back to world space
     const localClamped = new Vector(clampedX, clampedY);
     const cos2 = Math.cos(angle);
     const sin2 = Math.sin(angle);
@@ -214,7 +218,6 @@ export const RECTANGLE_COLLIDER: ColliderDefinition<RectangleCollisionObject> = 
     const hw = width / 2;
     const hh = height / 2;
 
-    // Create corners in local space
     const localCorners = [
       new Vector(-hw, -hh),
       new Vector(hw, -hh),
@@ -222,7 +225,6 @@ export const RECTANGLE_COLLIDER: ColliderDefinition<RectangleCollisionObject> = 
       new Vector(-hw, hh),
     ];
 
-    // Transform corners to world space
     const cos = Math.cos(angle);
     const sin = Math.sin(angle);
     
@@ -239,6 +241,34 @@ export const RECTANGLE_COLLIDER: ColliderDefinition<RectangleCollisionObject> = 
       min: Math.min(...projections),
       max: Math.max(...projections),
     };
+  },
+
+  debugDraw: (collisionObject, context) => {
+    const center = collisionObject.position;
+    const width = collisionObject.width;
+    const height = collisionObject.height;
+    const angle = ((collisionObject.angle || 0) * Math.PI) / 180;
+    
+    const rectCenter = center.clone();
+    rectCenter.x += width / 2;
+    rectCenter.y += height / 2;
+
+    context.save();
+    context.strokeStyle = "#ff0000";
+    context.lineWidth = 2;
+    
+    context.translate(rectCenter.x, rectCenter.y);
+    context.rotate(angle);
+    
+    context.strokeRect(-width / 2, -height / 2, width, height);
+    context.restore();
+
+    context.save();
+    context.fillStyle = "#ff0000";
+    context.beginPath();
+    context.arc(rectCenter.x, rectCenter.y, 3, 0, Math.PI * 2);
+    context.fill();
+    context.restore();
   },
 };
 export const STATIC_RESOLVER: ResolverDefinition<RectangleCollisionObject> = {
@@ -274,6 +304,39 @@ export const CIRCLE_COLLIDER: ColliderDefinition<CircleCollisionObject> = {
       min: projection - collisionObject.radius,
       max: projection + collisionObject.radius,
     };
+  },
+
+  debugDraw: (collisionObject, context) => {
+    context.save();
+    context.strokeStyle = "#ff0000";
+    context.lineWidth = 2;
+    
+    context.beginPath();
+    context.arc(collisionObject.position.x, collisionObject.position.y, collisionObject.radius, 0, Math.PI * 2);
+    context.stroke();
+    context.restore();
+
+    context.save();
+    context.fillStyle = "#ff0000";
+    context.beginPath();
+    context.arc(collisionObject.position.x, collisionObject.position.y, 3, 0, Math.PI * 2);
+    context.fill();
+    context.restore();
+
+    if (collisionObject.velocity) {
+      context.save();
+      context.strokeStyle = "#00ff00";
+      context.lineWidth = 2;
+      context.beginPath();
+      context.moveTo(collisionObject.position.x, collisionObject.position.y);
+      const scale = 0.1;
+      context.lineTo(
+        collisionObject.position.x + collisionObject.velocity.x * scale,
+        collisionObject.position.y + collisionObject.velocity.y * scale
+      );
+      context.stroke();
+      context.restore();
+    }
   },
 };
 

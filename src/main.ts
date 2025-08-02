@@ -1,4 +1,4 @@
-import { updateCollisionObjects, type CollisionObject, type CircleCollisionObject, type RectangleCollisionObject } from "./collisionObject";
+import { updateCollisionObjects, debugDrawColliders, type CollisionObject, type CircleCollisionObject, type RectangleCollisionObject } from "./collisionObject";
 import "./style.css";
 import { Vector } from "./vector";
 
@@ -44,6 +44,7 @@ let lastMousePos = new Vector(0, 0);
 let lastMoveTime = 0;
 
 const DAMPING = 0.5;
+let debugMode = false;
 
 canvas.addEventListener("mousedown", (e) => {
   const rect = canvas.getBoundingClientRect();
@@ -93,6 +94,10 @@ canvas.addEventListener("mouseleave", () => {
 document.addEventListener("keydown", (e) => {
   if (e.key.toLowerCase() === "r") {
     rectangleObject.angle += 15;
+  }
+  if (e.key.toLowerCase() === "d") {
+    debugMode = !debugMode;
+    console.log("Debug mode:", debugMode ? "ON" : "OFF");
   }
 });
 
@@ -194,18 +199,7 @@ function draw() {
     Math.PI * 2
   );
   context.fill();
-
-  context.strokeStyle = "#00ff00";
-  context.lineWidth = 2;
-  context.beginPath();
-  context.moveTo(projectile.position.x, projectile.position.y);
-  const velocityScale = 0.05;
-  context.lineTo(
-    projectile.position.x + projectile.velocity.x * velocityScale,
-    projectile.position.y + projectile.velocity.y * velocityScale
-  );
-  context.stroke();
-
+  
   context.fillStyle = rectangleObject.color || "#4287f5";
 
   context.translate(
@@ -273,6 +267,14 @@ function draw() {
   }
   
   updateCollisionObjects(collisionObjects);
+
+  if (debugMode) {
+    context.save();
+    context.translate(0, canvas.height);
+    context.scale(1, -1);
+    debugDrawColliders(collisionObjects, context);
+    context.restore();
+  }
 
   requestAnimationFrame(draw);
 }
