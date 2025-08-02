@@ -1,3 +1,4 @@
+import { registerCollisionObject, updateCollisionObjects, type CollisionObject } from "./collisionObject";
 import "./style.css";
 import { Vector } from "./vector";
 
@@ -18,10 +19,87 @@ resizeCanvas();
 
 window.addEventListener("resize", resizeCanvas);
 
-const projectile = {
-  pos: new Vector(20, 20),
-  vel: new Vector(0, 0),
+const projectile: CollisionObject = {
+  collisionEnabled: true,
+  position: new Vector(700, 500),
+  velocity: new Vector(0, 0),
   radius: 10,
+  getNormals: (other: CollisionObject) => {
+    const closestPoint = other.getClosestPoint(projectile.position);
+    const direction = closestPoint.sub(projectile.position);
+    if (direction.length() > 0) {
+      return [direction.normalize()];
+    }
+    return [];
+  },
+  getClosestPoint: function (point: Vector) {
+    const direction = point.sub(this.position);
+    if (direction.length() <= this.radius) {
+      return point;
+    }
+    return this.position.add(direction.normalize().scale(this.radius));
+  },
+  calculateProjection(normal: Vector) {
+    const projection = this.position.dot(normal);
+    return { min: projection - this.radius, max: projection + this.radius };
+  },
+  handleCollision(overlapAmount: number, overlapNormal: Vector) {
+    this.position = this.position.add(
+      overlapNormal.normalize().scale(overlapAmount)
+    );
+
+    const n = overlapNormal.normalize();
+    const vDotN = this.velocity.dot(n);
+    const COLLISION_DAMPING = 0.7;
+
+    this.velocity = this.velocity.sub(
+      n.scale((1 + COLLISION_DAMPING) * vDotN)
+    );
+
+    const tangent = new Vector(-n.y, n.x);
+    const vDotT = this.velocity.dot(tangent);
+    const FRICTION = 0.2;
+    this.velocity = this.velocity.sub(
+      tangent.scale(vDotT * FRICTION)
+    );
+
+    const VELOCITY_EPSILON_X = 10;
+    const VELOCITY_EPSILON_Y = 40;
+    let vx = this.velocity.x;
+    let vy = this.velocity.y;
+    if (Math.abs(vx) < VELOCITY_EPSILON_X) vx = 0;
+    if (Math.abs(vy) < VELOCITY_EPSILON_Y) vy = 0;
+    this.velocity = new Vector(vx, vy);
+  },
+};
+
+const staticProjectile: CollisionObject = {
+  collisionEnabled: true,
+  position: new Vector(300, 400),
+  velocity: new Vector(0, 0),
+  radius: 25,
+  getNormals(other: CollisionObject){
+    const closestPoint = other.getClosestPoint(staticProjectile.position);
+    const direction = closestPoint.sub(staticProjectile.position);
+    if (direction.length() > 0) {
+      return [direction.normalize()];
+    }
+    return [];
+  },
+  getClosestPoint(point: Vector) {
+    const direction = point.sub(this.position);
+    if (direction.length() <= this.radius) {
+      return point;
+    }
+    return this.position.add(direction.normalize().scale(this.radius));
+  },
+  calculateProjection(normal: Vector) {
+    const projection = this.position.dot(normal);
+    return { min: projection - this.radius, max: projection + this.radius };
+  },
+  handleCollision(_overlapAmount: number, _overlapNormal: Vector) {
+    // Empty collision handler - this projectile doesn't move
+  },
 };
 
 let isDragging = false;
@@ -37,13 +115,13 @@ canvas.addEventListener("mousedown", (e) => {
   const mouseX = e.clientX - rect.left;
   const mouseY = canvas.height - (e.clientY - rect.top);
   const mouseVec = new Vector(mouseX, mouseY);
-  const dist = mouseVec.sub(projectile.pos).length();
+  const dist = mouseVec.sub(projectile.position).length();
   if (dist <= projectile.radius) {
     isDragging = true;
-    dragOffset = projectile.pos.sub(mouseVec);
+    dragOffset = projectile.position.sub(mouseVec);
     lastMousePos = mouseVec.clone();
     lastMoveTime = performance.now();
-    projectile.vel = new Vector(0, 0);
+    projectile.velocity = new Vector(0, 0);
   }
 });
 
@@ -58,14 +136,14 @@ canvas.addEventListener("mousemove", (e) => {
     if (dt > 0) {
       const targetVel = mouseVec.sub(lastMousePos).scale(1 / dt);
       const SMOOTHING = 0.2;
-      projectile.vel = projectile.vel
+      projectile.velocity = projectile.velocity
         .scale(1 - SMOOTHING)
         .add(targetVel.scale(SMOOTHING))
         .scale(DAMPING);
     }
     lastMousePos = mouseVec.clone();
     lastMoveTime = now;
-    projectile.pos = mouseVec.add(dragOffset);
+    projectile.position = mouseVec.add(dragOffset);
   }
 });
 
@@ -79,11 +157,12 @@ canvas.addEventListener("mouseleave", () => {
 
 document.addEventListener("keydown", (e) => {
   if (e.key.toLowerCase() === "r") {
-    rectangleObject.angle += 15; 
+    rectangleObject.angle += 15;
   }
 });
 
-const rectangleObject = {
+const rectangleObject: CollisionObject = {
+  collisionEnabled: true,
   pos: new Vector(600, 300),
   width: 300,
   height: 100,
@@ -92,8 +171,253 @@ const rectangleObject = {
   vel: new Vector(0, 0),
   angle: 0,
   angularVelocity: 0,
-  static: true,
+
+  getNormals: function (_other: CollisionObject) {
+    const angleRad = (this.angle * Math.PI) / 180;
+    const cos = Math.cos(angleRad);
+    const sin = Math.sin(angleRad);
+    
+    return [
+      new Vector(cos, sin),
+      new Vector(-sin, cos),
+    
+    ];
+  },
+
+  getClosestPoint: function (point: Vector) {
+    const angleRad = (this.angle * Math.PI) / 180;
+    const cos = Math.cos(angleRad);
+    const sin = Math.sin(angleRad);
+
+    const center = new Vector(
+      this.pos.x + this.width / 2,
+      this.pos.y + this.height / 2
+    );
+    const localPoint = point.sub(center);
+
+    const rotatedX = localPoint.x * cos + localPoint.y * sin;
+    const rotatedY = -localPoint.x * sin + localPoint.y * cos;
+
+    const hw = this.width / 2;
+    const hh = this.height / 2;
+    const clampedX = Math.max(-hw, Math.min(hw, rotatedX));
+    const clampedY = Math.max(-hh, Math.min(hh, rotatedY));
+
+    const localClosest = new Vector(clampedX, clampedY);
+    const unrotatedX = localClosest.x * cos - localClosest.y * sin;
+    const unrotatedY = localClosest.x * sin + localClosest.y * cos;
+
+    return center.add(new Vector(unrotatedX, unrotatedY));
+  },
+
+  calculateProjection: function (normal: Vector) {
+    const hw = this.width / 2;
+    const hh = this.height / 2;
+    const angleRad = (this.angle * Math.PI) / 180;
+    const cos = Math.cos(angleRad);
+    const sin = Math.sin(angleRad);
+
+    const cx = this.pos.x + hw;
+    const cy = this.pos.y + hh;
+
+    const corners = [
+      new Vector(-hw, -hh),
+      new Vector(hw, -hh),
+      new Vector(hw, hh),
+      new Vector(-hw, hh),
+    ].map((corner) => {
+      const x = corner.x * cos - corner.y * sin;
+      const y = corner.x * sin + corner.y * cos;
+      return new Vector(cx + x, cy + y);
+    });
+
+    const projections = corners.map((corner) => corner.dot(normal));
+    return {
+      min: Math.min(...projections),
+      max: Math.max(...projections),
+    };
+  },
+
+  handleCollision: function (_overlapAmount: number, _overlapNormal: Vector) {},
 };
+
+const groundCollisionRectangle: CollisionObject = {
+  collisionEnabled: true,
+  pos: new Vector(0, 0),
+  width: 2000,
+  height: 50,
+  color: "#666666",
+  isColliding: false,
+  vel: new Vector(0, 0),
+  angle: 0,
+  angularVelocity: 0,
+
+  getNormals: function (_other: CollisionObject) {
+    return [
+      new Vector(0, 1), // Top normal (pointing up)
+      new Vector(1, 0), // Right normal
+      new Vector(0, -1), // Bottom normal (pointing down)
+      new Vector(-1, 0), // Left normal
+    ];
+  },
+
+  getClosestPoint: function (point: Vector) {
+    const center = new Vector(
+      this.pos.x + this.width / 2,
+      this.pos.y + this.height / 2
+    );
+    const localPoint = point.sub(center);
+
+    const hw = this.width / 2;
+    const hh = this.height / 2;
+    const clampedX = Math.max(-hw, Math.min(hw, localPoint.x));
+    const clampedY = Math.max(-hh, Math.min(hh, localPoint.y));
+
+    return center.add(new Vector(clampedX, clampedY));
+  },
+
+  calculateProjection: function (normal: Vector) {
+    const hw = this.width / 2;
+    const hh = this.height / 2;
+    const cx = this.pos.x + hw;
+    const cy = this.pos.y + hh;
+
+    const corners = [
+      new Vector(cx - hw, cy - hh),
+      new Vector(cx + hw, cy - hh),
+      new Vector(cx + hw, cy + hh),
+      new Vector(cx - hw, cy + hh),
+    ];
+
+    const projections = corners.map((corner) => corner.dot(normal));
+    return {
+      min: Math.min(...projections),
+      max: Math.max(...projections),
+    };
+  },
+
+  handleCollision: function (_overlapAmount: number, _overlapNormal: Vector) {},
+};
+
+const leftWallCollisionRectangle: CollisionObject = {
+  collisionEnabled: true,
+  pos: new Vector(0, 0),
+  width: 50,
+  height: 2000,
+  color: "#666666",
+  isColliding: false,
+  vel: new Vector(0, 0),
+  angle: 0,
+  angularVelocity: 0,
+
+  getNormals: function (_other: CollisionObject) {
+    return [
+      new Vector(0, 1), // Top normal (pointing up)
+      new Vector(1, 0), // Right normal
+      new Vector(0, -1), // Bottom normal (pointing down)
+      new Vector(-1, 0), // Left normal
+    ];
+  },
+
+  getClosestPoint: function (point: Vector) {
+    const center = new Vector(
+      this.pos.x + this.width / 2,
+      this.pos.y + this.height / 2
+    );
+    const localPoint = point.sub(center);
+
+    const hw = this.width / 2;
+    const hh = this.height / 2;
+    const clampedX = Math.max(-hw, Math.min(hw, localPoint.x));
+    const clampedY = Math.max(-hh, Math.min(hh, localPoint.y));
+
+    return center.add(new Vector(clampedX, clampedY));
+  },
+
+  calculateProjection: function (normal: Vector) {
+    const hw = this.width / 2;
+    const hh = this.height / 2;
+    const cx = this.pos.x + hw;
+    const cy = this.pos.y + hh;
+
+    const corners = [
+      new Vector(cx - hw, cy - hh),
+      new Vector(cx + hw, cy - hh),
+      new Vector(cx + hw, cy + hh),
+      new Vector(cx - hw, cy + hh),
+    ];
+
+    const projections = corners.map((corner) => corner.dot(normal));
+    return {
+      min: Math.min(...projections),
+      max: Math.max(...projections),
+    };
+  },
+
+  handleCollision: function (_overlapAmount: number, _overlapNormal: Vector) {},
+};
+
+const rightWallCollisionRectangle: CollisionObject = {
+  collisionEnabled: true,
+  pos: new Vector(canvas.width - 50, 0),
+  width: 50,
+  height: 2000,
+  color: "#666666",
+  isColliding: false,
+  vel: new Vector(0, 0),
+  angle: 0,
+  angularVelocity: 0,
+
+  getNormals: function (_other: CollisionObject) {
+    return [
+      new Vector(0, 1), // Top normal (pointing up)
+      new Vector(1, 0), // Right normal
+      new Vector(0, -1), // Bottom normal (pointing down)
+      new Vector(-1, 0), // Left normal
+    ];
+  },
+
+  getClosestPoint: function (point: Vector) {
+    const center = new Vector(
+      this.pos.x + this.width / 2,
+      this.pos.y + this.height / 2
+    );
+    const localPoint = point.sub(center);
+
+    const hw = this.width / 2;
+    const hh = this.height / 2;
+    const clampedX = Math.max(-hw, Math.min(hw, localPoint.x));
+    const clampedY = Math.max(-hh, Math.min(hh, localPoint.y));
+
+    return center.add(new Vector(clampedX, clampedY));
+  },
+
+  calculateProjection: function (normal: Vector) {
+    const hw = this.width / 2;
+    const hh = this.height / 2;
+    const cx = this.pos.x + hw;
+    const cy = this.pos.y + hh;
+
+    const corners = [
+      new Vector(cx - hw, cy - hh),
+      new Vector(cx + hw, cy - hh),
+      new Vector(cx + hw, cy + hh),
+      new Vector(cx - hw, cy + hh),
+    ];
+
+    const projections = corners.map((corner) => corner.dot(normal));
+    return {
+      min: Math.min(...projections),
+      max: Math.max(...projections),
+    };
+  },
+
+  handleCollision: function (_overlapAmount: number, _overlapNormal: Vector) {},
+};
+
+const collisionObjects = [projectile, staticProjectile, rectangleObject, groundCollisionRectangle, leftWallCollisionRectangle, rightWallCollisionRectangle];
+
+collisionObjects.forEach(obj => registerCollisionObject(obj));
 
 function draw() {
   context.save();
@@ -104,17 +428,33 @@ function draw() {
   context.fillStyle = "#242424";
   context.fillRect(0, 0, canvas.width, canvas.height);
 
-  context.fillStyle = "#646cff";
+  // Draw green dotted line at y=800
+  context.strokeStyle = "#00ff00";
+  context.lineWidth = 2;
+  context.setLineDash([10, 5]); // 10px dash, 5px gap
   context.beginPath();
-  context.arc(canvas.width / 2, canvas.height / 2, 50, 0, Math.PI * 2);
-  context.fill();
+  context.moveTo(0, 800);
+  context.lineTo(canvas.width, 800);
+  context.stroke();
+  context.setLineDash([]); // Reset line dash
 
   context.fillStyle = "#ff6464";
   context.beginPath();
   context.arc(
-    projectile.pos.x,
-    projectile.pos.y,
+    projectile.position.x,
+    projectile.position.y,
     projectile.radius,
+    0,
+    Math.PI * 2
+  );
+  context.fill();
+
+  context.fillStyle = "#646cff";
+  context.beginPath();
+  context.arc(
+    staticProjectile.position.x,
+    staticProjectile.position.y,
+    staticProjectile.radius,
     0,
     Math.PI * 2
   );
@@ -123,11 +463,11 @@ function draw() {
   context.strokeStyle = "#00ff00";
   context.lineWidth = 2;
   context.beginPath();
-  context.moveTo(projectile.pos.x, projectile.pos.y);
+  context.moveTo(projectile.position.x, projectile.position.y);
   const velocityScale = 0.05;
   context.lineTo(
-    projectile.pos.x + projectile.vel.x * velocityScale,
-    projectile.pos.y + projectile.vel.y * velocityScale
+    projectile.position.x + projectile.velocity.x * velocityScale,
+    projectile.position.y + projectile.velocity.y * velocityScale
   );
   context.stroke();
 
@@ -148,149 +488,60 @@ function draw() {
 
   context.restore();
 
-  if (!isDragging) {
-    projectile.pos = projectile.pos.add(projectile.vel.scale(1 / 60));
-    const gravity = -500;
-    projectile.vel = projectile.vel.add(new Vector(0, gravity * (1 / 60)));
-    if (projectile.pos.y < projectile.radius) {
-      projectile.pos.y = projectile.radius;
-      if (projectile.vel.y < 0) {
-        projectile.vel.y = -projectile.vel.y * 0.5;
-      }
-      projectile.vel.x *= DAMPING;
-    }
-  }
+  // Draw ground collision rectangle
+  context.save();
+  context.translate(0, canvas.height);
+  context.scale(1, -1);
+  
+  context.fillStyle = groundCollisionRectangle.color || "#666666";
+  context.fillRect(
+    groundCollisionRectangle.pos.x,
+    groundCollisionRectangle.pos.y,
+    groundCollisionRectangle.width,
+    groundCollisionRectangle.height
+  );
+  
+  context.restore();
+
+  // Draw left wall collision rectangle
+  context.save();
+  context.translate(0, canvas.height);
+  context.scale(1, -1);
+  
+  context.fillStyle = leftWallCollisionRectangle.color || "#666666";
+  context.fillRect(
+    leftWallCollisionRectangle.pos.x,
+    leftWallCollisionRectangle.pos.y,
+    leftWallCollisionRectangle.width,
+    leftWallCollisionRectangle.height
+  );
+  
+  context.restore();
+
+  // Draw right wall collision rectangle
+  context.save();
+  context.translate(0, canvas.height);
+  context.scale(1, -1);
+  
+  context.fillStyle = rightWallCollisionRectangle.color || "#666666";
+  context.fillRect(
+    rightWallCollisionRectangle.pos.x,
+    rightWallCollisionRectangle.pos.y,
+    rightWallCollisionRectangle.width,
+    rightWallCollisionRectangle.height
+  );
+  
+  context.restore();
 
   if (!isDragging) {
-    const cx = rectangleObject.pos.x + rectangleObject.width / 2;
-    const cy = rectangleObject.pos.y + rectangleObject.height / 2;
-    const angleRad = (rectangleObject.angle * Math.PI) / 180;
-    const hw = rectangleObject.width / 2;
-    const hh = rectangleObject.height / 2;
-    const ux = Math.cos(angleRad);
-    const uy = Math.sin(angleRad);
-    const firstNormal = new Vector(-uy, ux).normalize();
-    const secondNormal = new Vector(ux, uy).normalize();
+    projectile.position = projectile.position.add(projectile.velocity.scale(1 / 60));
 
-    const corners = [
-      { x: -hw, y: -hh },
-      { x: hw, y: -hh },
-      { x: hw, y: hh },
-      { x: -hw, y: hh },
-    ];
+    const GRAVITY = -500;
+    projectile.velocity = projectile.velocity.add(new Vector(0, GRAVITY / 60));
 
-    const worldCorners = corners.map((corner) => {
-      const rx = corner.x * ux - corner.y * uy;
-      const ry = corner.x * uy + corner.y * ux;
-      return new Vector(cx + rx, cy + ry);
-    });
-
-    let closestCorner = null;
-    let minDistSq = Infinity;
-    for (const corner of worldCorners) {
-      const distSq = Vector.from(projectile.pos).distanceToSq(
-        Vector.from(corner)
-      );
-      if (distSq < minDistSq) {
-        minDistSq = distSq;
-        closestCorner = corner;
-      }
-    }
-
-    let vectorToCorner = new Vector();
-    if (closestCorner) {
-      vectorToCorner = Vector.from(closestCorner).sub(projectile.pos);
-    }
-    vectorToCorner.normalize();
-
-    function getMinMaxProjection(
-      points: Vector[],
-      axis: Vector
-    ): { min: number; max: number } {
-      const projections = points.map((point) => Vector.from(point).dot(axis));
-      const min = Math.min(...projections);
-      const max = Math.max(...projections);
-      return { min, max };
-    }
-
-    function checkOverlapOnNormals(
-      normals: Vector[],
-      worldCorners: Vector[],
-      projectile: { pos: Vector; radius: number }
-    ) {
-      let minOverlap = Infinity;
-      let minOverlapVector: Vector | null = null;
-
-      for (const normal of normals) {
-        const { min: minProjRect, max: maxProjRect } = getMinMaxProjection(
-          worldCorners,
-          normal
-        );
-        const projProjectile = projectile.pos.dot(normal);
-        const minProjProjectile = projProjectile - projectile.radius;
-        const maxProjProjectile = projProjectile + projectile.radius;
-
-        const overlap =
-          maxProjRect >= minProjProjectile && minProjRect <= maxProjProjectile;
-        if (!overlap) {
-          return { minOverlap: 0, minOverlapVector: null };
-        }
-
-        const pushOutPos = maxProjRect - minProjProjectile;
-        const pushOutNeg = minProjRect - maxProjProjectile;
-
-        let overlapAmount: number;
-        let overlapVector: Vector;
-
-        if (Math.abs(pushOutPos) < Math.abs(pushOutNeg)) {
-          overlapAmount = pushOutPos;
-          overlapVector = normal;
-        } else {
-          overlapAmount = -pushOutNeg;
-          overlapVector = normal.scale(-1);
-        }
-
-        if (overlapAmount < minOverlap) {
-          minOverlap = overlapAmount;
-          minOverlapVector = overlapVector;
-        }
-      }
-      return { minOverlap, minOverlapVector };
-    }
-    const { minOverlap, minOverlapVector } = checkOverlapOnNormals(
-      [firstNormal, secondNormal, vectorToCorner],
-      worldCorners,
-      projectile
-    );
-    if (minOverlapVector && minOverlap > 0) {
-      projectile.pos = projectile.pos.add(
-        minOverlapVector.normalize().scale(minOverlap)
-      );
-
-      const n = minOverlapVector.normalize();
-      const t = new Vector(-n.y, n.x);
-
-      const vDotN = projectile.vel.dot(n);
-      const vDotT = projectile.vel.dot(t);
-
-      const restitution = 0.8;
-      const friction = 0.05;
-
-      const vNormal = n.scale(-vDotN * restitution * DAMPING);
-
-      let frictionFactor = 1 - friction;
-      if (Math.abs(vDotN) < 10) {
-        frictionFactor = 1 - friction * 4;
-      }
-      const vTangent = t.scale(vDotT * frictionFactor);
-
-      projectile.vel = vNormal.add(vTangent);
-
-      if (projectile.vel.length() < 2) {
-        projectile.vel = new Vector(0, 0);
-      }
-    }
+    // Ground collision is now handled by the collision system
   }
+  updateCollisionObjects();
 
   requestAnimationFrame(draw);
 }
